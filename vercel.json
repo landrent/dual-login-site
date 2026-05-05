@@ -2,15 +2,7 @@
     "version": 2,
     "functions": {
         "server.js": {
-            "includeFiles": [
-                "index.html",
-                "styles.css",
-                "script.js",
-                "accounts.json",
-                "sell_requests.json",
-                "quests.json",
-                "player_quests.json"
-            ]
+            "includeFiles": "{index.html,styles.css,script.js,accounts.json,sell_requests.json,quests.json,player_quests.json}"
         }
     },
     "builds": [
