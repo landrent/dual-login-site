@@ -5,7 +5,7 @@ const url = require('url');
 const { exec } = require('child_process');
 
 const port = Number(process.env.PORT) || 3000;
-const rootDir = __dirname;
+const rootDir = process.cwd();
 const accountsFile = path.join(rootDir, 'accounts.json');
 const sellRequestsFile = path.join(rootDir, 'sell_requests.json');
 
@@ -27,7 +27,11 @@ async function readAccounts() {
 }
 
 async function writeAccounts(accounts) {
-    await fs.writeFile(accountsFile, JSON.stringify(accounts, null, 4), 'utf8');
+    try {
+        await fs.writeFile(accountsFile, JSON.stringify(accounts, null, 4), 'utf8');
+    } catch (error) {
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
+    }
 }
 
 async function readSellRequests() {
@@ -44,7 +48,11 @@ async function readSellRequests() {
 }
 
 async function writeSellRequests(requests) {
-    await fs.writeFile(sellRequestsFile, JSON.stringify(requests, null, 4), 'utf8');
+    try {
+        await fs.writeFile(sellRequestsFile, JSON.stringify(requests, null, 4), 'utf8');
+    } catch (error) {
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
+    }
 }
 
 // PENAMBAHAN FUNGSI BACA TULIS JSON UNTUK QUEST
@@ -62,7 +70,11 @@ async function readJsonFile(filePath) {
 }
 
 async function writeJsonFile(filePath, data) {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 4), 'utf8');
+    try {
+        await fs.writeFile(filePath, JSON.stringify(data, null, 4), 'utf8');
+    } catch (error) {
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
+    }
 }
 
 function createId(prefix) {
@@ -1011,24 +1023,27 @@ const server = http.createServer(async (req, res) => {
     sendFile(res, filePath);
 });
 
-server.listen(port, () => {
+if (process.env.NODE_ENV !== 'production') {
+    server.listen(port, () => {
+        // Buka browser otomatis di lingkungan lokal
+        const url = `http://localhost:${port}`;
+        if (process.env.NO_AUTO_OPEN !== '1') {
+            const command = process.platform === 'win32'
+                ? `start ${url}`
+                : process.platform === 'darwin'
+                    ? `open ${url}`
+                    : `xdg-open ${url}`;
 
-    // Buka browser otomatis
-    const url = `http://localhost:${port}`;
-    if (process.env.NO_AUTO_OPEN !== '1') {
-        const command = process.platform === 'win32'
-            ? `start ${url}`
-            : process.platform === 'darwin'
-                ? `open ${url}`
-                : `xdg-open ${url}`;
+            exec(command, (error) => {
+                if (error) {
+                    console.log(`Browser tidak bisa dibuka otomatis. Buka manual: ${url}`);
+                }
+            });
+        } else {
+            console.log(`Auto-open browser dimatikan. Buka manual: ${url}`);
+        }
+        console.log(`Server berjalan di http://localhost:${port}`);
+    });
+}
 
-        exec(command, (error) => {
-            if (error) {
-                console.log(`Browser tidak bisa dibuka otomatis. Buka manual: ${url}`);
-            }
-        });
-    } else {
-        console.log(`Auto-open browser dimatikan. Buka manual: ${url}`);
-    }
-    console.log(`Server berjalan di http://localhost:${port}`);
-});
+module.exports = server;
