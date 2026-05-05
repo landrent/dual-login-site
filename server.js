@@ -301,6 +301,14 @@ const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
+    if (pathname === '/styles.css' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'styles.css'));
+    }
+    
+    if (pathname === '/script.js' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'script.js'));
+    }
+
     // Route for frontend entry point. This avoids Vercel returning Not Found for the root URL.
     if ((pathname === '/' || pathname === '/index.html') && req.method === 'GET') {
         return sendFile(res, path.join(rootDir, 'index.html'));
@@ -1024,16 +1032,24 @@ const server = http.createServer(async (req, res) => {
         .normalize(decodeURIComponent(pathname || '/'))
         .replace(/^(\.\.(\/|\\|$))+/, '')
         .replace(/^[/\\]+/, '');
-    const filePath = path.join(rootDir, safePath || 'index.html');
-    const relativePath = path.relative(rootDir, filePath);
 
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-        res.writeHead(400);
-        res.end('Bad Request');
-        return;
+    if (safePath && safePath !== '') {
+        const filePath = path.join(rootDir, safePath);
+        const relativePath = path.relative(rootDir, filePath);
+        
+        if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+            try {
+                await fs.access(filePath);
+                return sendFile(res, filePath);
+            } catch (err) {
+                // File doesn't exist, continue to 404
+            }
+        }
     }
 
-    return sendFile(res, filePath);
+    // If no route matched, return 404
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
 });
 
 if (process.env.NODE_ENV !== 'production') {
