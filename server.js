@@ -183,13 +183,16 @@ function sendFile(res, filePath) {
         .then((content) => {
             const ext = path.extname(filePath).toLowerCase();
             const types = {
-                '.html': 'text/html',
-                '.css': 'text/css',
-                '.js': 'application/javascript',
-                '.json': 'application/json'
+                '.html': 'text/html; charset=utf-8',
+                '.css': 'text/css; charset=utf-8',
+                '.js': 'application/javascript; charset=utf-8',
+                '.json': 'application/json; charset=utf-8'
             };
             const contentType = types[ext] || 'application/octet-stream';
-            res.writeHead(200, { 'Content-Type': contentType });
+            res.writeHead(200, {
+                'Content-Type': contentType,
+                'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=0, must-revalidate'
+            });
             res.end(content);
         })
         .catch(() => {
