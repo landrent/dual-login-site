@@ -591,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('keydown', (event) => {
-    if (event.key.length !== 1) {
+    if (!event.key || event.key.length !== 1) {
         return;
     }
 

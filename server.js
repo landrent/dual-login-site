@@ -20,6 +20,12 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 // Helper: panggil Supabase REST API tanpa SDK tambahan
 async function supabase(method, table, { filter, body, returning } = {}) {
+    // Fallback jika Supabase tidak dikonfigurasi - gunakan data lokal
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        console.warn(`[FALLBACK] Menggunakan local JSON untuk ${method} ${table}`);
+        return handleLocalJSON(method, table, { filter, body, returning });
+    }
+
     let endpoint = `${SUPABASE_URL}/rest/v1/${table}`;
     const params = new URLSearchParams();
 
@@ -52,6 +58,93 @@ async function supabase(method, table, { filter, body, returning } = {}) {
 
     if (!text || text === 'null') return method === 'GET' ? [] : null;
     return JSON.parse(text);
+}
+
+// ============================================================
+// LOCAL JSON FALLBACK (untuk development/testing)
+// ============================================================
+async function handleLocalJSON(method, table, { filter, body, returning } = {}) {
+    const filePath = path.join(rootDir, `${table}.json`);
+
+    try {
+        let data = [];
+        try {
+            const fileContent = await fs.readFile(filePath, 'utf-8');
+            data = JSON.parse(fileContent || '[]');
+        } catch {
+            data = [];
+        }
+
+        if (method === 'GET') {
+            let results = data;
+            if (filter) {
+                results = data.filter(item => {
+                    for (const [k, v] of Object.entries(filter)) {
+                        const filterValue = String(v).replace(/^eq\./, '');
+                        if (String(item[k] || '').toLowerCase() !== filterValue.toLowerCase()) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+            return results;
+        }
+
+        if (method === 'POST') {
+            const newItem = { ...body, id: body.id || createId(table.slice(0, 1)) };
+            data.push(newItem);
+            await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+            return newItem;
+        }
+
+        if (method === 'PATCH') {
+            let updated = null;
+            data = data.map(item => {
+                let match = true;
+                if (filter) {
+                    for (const [k, v] of Object.entries(filter)) {
+                        const filterValue = String(v).replace(/^eq\./, '');
+                        if (String(item[k] || '').toLowerCase() !== filterValue.toLowerCase()) {
+                            match = false;
+                            break;
+                        }
+                    }
+                }
+                if (match) {
+                    updated = { ...item, ...body };
+                    return updated;
+                }
+                return item;
+            });
+            await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+            return updated;
+        }
+
+        if (method === 'DELETE') {
+            const originalLength = data.length;
+            data = data.filter(item => {
+                if (filter) {
+                    for (const [k, v] of Object.entries(filter)) {
+                        const filterValue = String(v).replace(/^eq\./, '');
+                        if (String(item[k] || '').toLowerCase() === filterValue.toLowerCase()) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            });
+            if (data.length < originalLength) {
+                await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+            }
+            return null;
+        }
+
+        return [];
+    } catch (err) {
+        console.error(`[handleLocalJSON] Error for ${method} ${table}:`, err.message);
+        throw err;
+    }
 }
 
 // ---- Wrapper CRUD ----
