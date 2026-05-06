@@ -269,7 +269,13 @@ const server = http.createServer(async (req, res) => {
 
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
+    if (pathname === '/styles.css' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'styles.css'));
+    }
 
+    if (pathname === '/script.js' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'script.js'));
+    }
     if ((pathname === '/' || pathname === '/index.html') && req.method === 'GET') {
         return sendFile(res, path.join(rootDir, 'index.html'));
     }
