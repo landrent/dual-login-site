@@ -5,6 +5,24 @@ const url = require('url');
 
 const port = Number(process.env.PORT) || 3000;
 const rootDir = process.cwd(); // Use process.cwd() for better compatibility in Vercel
+
+// Initialize Supabase
+let supabase = null;
+try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+        supabase = createClient(supabaseUrl, supabaseKey);
+        console.log('✓ Supabase initialized');
+    } else {
+        console.log('ℹ Supabase not configured, using file-based storage');
+    }
+} catch (e) {
+    console.log('ℹ Supabase SDK not available, using file-based storage');
+}
+
 const accountsFile = path.join(rootDir, 'accounts.json');
 const sellRequestsFile = path.join(rootDir, 'sell_requests.json');
 
@@ -304,7 +322,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/styles.css' && req.method === 'GET') {
         return sendFile(res, path.join(rootDir, 'styles.css'));
     }
-    
+
     if (pathname === '/script.js' && req.method === 'GET') {
         return sendFile(res, path.join(rootDir, 'script.js'));
     }
@@ -1036,7 +1054,7 @@ const server = http.createServer(async (req, res) => {
     if (safePath && safePath !== '') {
         const filePath = path.join(rootDir, safePath);
         const relativePath = path.relative(rootDir, filePath);
-        
+
         if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
             try {
                 await fs.access(filePath);
