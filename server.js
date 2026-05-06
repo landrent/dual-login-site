@@ -1,6 +1,7 @@
 const http = require('http');
 const path = require('path');
 const url = require('url');
+const { promises: fs } = require('fs');
 
 const port = Number(process.env.PORT) || 3000;
 const rootDir = process.cwd();
@@ -22,7 +23,6 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 async function supabase(method, table, { filter, body, returning } = {}) {
     // Fallback jika Supabase tidak dikonfigurasi - gunakan data lokal
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-        console.warn(`[FALLBACK] Menggunakan local JSON untuk ${method} ${table}`);
         return handleLocalJSON(method, table, { filter, body, returning });
     }
 
@@ -268,8 +268,6 @@ function sendJSON(res, status, data) {
     });
     res.end(body);
 }
-
-const { promises: fs } = require('fs');
 
 function sendFile(res, filePath) {
     return fs.readFile(filePath)

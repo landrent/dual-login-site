@@ -13,5 +13,13 @@
     "coins": 0,
     "profile_photo": "",
     "id": "a-1778053031003-2qa3bh"
+  },
+  {
+    "username": "NewTestUser",
+    "username_lower": "newtestuser",
+    "password": "testpass456",
+    "coins": 0,
+    "profile_photo": "",
+    "id": "a-1778054125883-quju6t"
   }
 ]
