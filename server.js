@@ -2,10 +2,9 @@ const http = require('http');
 const fs = require('fs').promises;
 const path = require('path');
 const url = require('url');
-const { exec } = require('child_process');
 
 const port = Number(process.env.PORT) || 3000;
-const rootDir = __dirname;
+const rootDir = process.cwd(); // Use process.cwd() for better compatibility in Vercel
 const accountsFile = path.join(rootDir, 'accounts.json');
 const sellRequestsFile = path.join(rootDir, 'sell_requests.json');
 
@@ -14,37 +13,27 @@ const questsFile = path.join(rootDir, 'quests.json');
 const playerQuestsFile = path.join(rootDir, 'player_quests.json');
 
 async function readAccounts() {
-    try {
-        const file = await fs.readFile(accountsFile, 'utf8');
-        return JSON.parse(file);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            await fs.writeFile(accountsFile, '[]', 'utf8');
-            return [];
-        }
-        throw error;
-    }
+    return readJsonFile(accountsFile);
 }
 
 async function writeAccounts(accounts) {
-    await fs.writeFile(accountsFile, JSON.stringify(accounts, null, 4), 'utf8');
-}
-
-async function readSellRequests() {
     try {
-        const file = await fs.readFile(sellRequestsFile, 'utf8');
-        return JSON.parse(file);
+        await fs.writeFile(accountsFile, JSON.stringify(accounts, null, 4), 'utf8');
     } catch (error) {
-        if (error.code === 'ENOENT') {
-            await fs.writeFile(sellRequestsFile, '[]', 'utf8');
-            return [];
-        }
-        throw error;
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
     }
 }
 
+async function readSellRequests() {
+    return readJsonFile(sellRequestsFile);
+}
+
 async function writeSellRequests(requests) {
-    await fs.writeFile(sellRequestsFile, JSON.stringify(requests, null, 4), 'utf8');
+    try {
+        await fs.writeFile(sellRequestsFile, JSON.stringify(requests, null, 4), 'utf8');
+    } catch (error) {
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
+    }
 }
 
 // PENAMBAHAN FUNGSI BACA TULIS JSON UNTUK QUEST
@@ -54,15 +43,24 @@ async function readJsonFile(filePath) {
         return JSON.parse(file);
     } catch (error) {
         if (error.code === 'ENOENT') {
-            await fs.writeFile(filePath, '[]', 'utf8');
+            try {
+                await fs.writeFile(filePath, '[]', 'utf8');
+            } catch (writeError) {
+                console.error('Write failed: Vercel filesystem is read-only.', writeError.message);
+            }
             return [];
         }
-        throw error;
+        console.error(`Read failed for ${path.basename(filePath)}. Returning empty array.`, error.message);
+        return [];
     }
 }
 
 async function writeJsonFile(filePath, data) {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 4), 'utf8');
+    try {
+        await fs.writeFile(filePath, JSON.stringify(data, null, 4), 'utf8');
+    } catch (error) {
+        console.error('Write failed: Vercel filesystem is read-only.', error.message);
+    }
 }
 
 function createId(prefix) {
@@ -185,13 +183,16 @@ function sendFile(res, filePath) {
         .then((content) => {
             const ext = path.extname(filePath).toLowerCase();
             const types = {
-                '.html': 'text/html',
-                '.css': 'text/css',
-                '.js': 'application/javascript',
-                '.json': 'application/json'
+                '.html': 'text/html; charset=utf-8',
+                '.css': 'text/css; charset=utf-8',
+                '.js': 'application/javascript; charset=utf-8',
+                '.json': 'application/json; charset=utf-8'
             };
             const contentType = types[ext] || 'application/octet-stream';
-            res.writeHead(200, { 'Content-Type': contentType });
+            res.writeHead(200, {
+                'Content-Type': contentType,
+                'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=0, must-revalidate'
+            });
             res.end(content);
         })
         .catch(() => {
@@ -221,7 +222,7 @@ function parseRequestBody(req) {
 }
 
 // Background Task: Auto-Deduct Penalty jika Quest Telat (PENAMBAHAN)
-setInterval(async () => {
+async function processOverdueQuests() {
     try {
         const playerQuests = await readJsonFile(playerQuestsFile);
         const accounts = await readAccounts();
@@ -279,7 +280,11 @@ setInterval(async () => {
             await writeAccounts(accounts);
         }
     } catch (error) { }
-}, 5000); // Mengecek keterlambatan setiap 5 detik
+}
+
+if (process.env.NODE_ENV !== 'production') {
+    setInterval(processOverdueQuests, 5000); // Mengecek keterlambatan setiap 5 detik di lokal
+}
 
 const server = http.createServer(async (req, res) => {
     // Tambah CORS headers
@@ -295,6 +300,28 @@ const server = http.createServer(async (req, res) => {
 
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
+
+    if (pathname === '/styles.css' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'styles.css'));
+    }
+    
+    if (pathname === '/script.js' && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'script.js'));
+    }
+
+    // Route for frontend entry point. This avoids Vercel returning Not Found for the root URL.
+    if ((pathname === '/' || pathname === '/index.html') && req.method === 'GET') {
+        return sendFile(res, path.join(rootDir, 'index.html'));
+    }
+
+    if (
+        pathname.startsWith('/quests') ||
+        pathname.startsWith('/admin') ||
+        pathname === '/my-quests' ||
+        pathname.startsWith('/player/')
+    ) {
+        await processOverdueQuests();
+    }
 
     if (pathname === '/accounts') {
         if (req.method === 'POST') {
@@ -1001,34 +1028,34 @@ const server = http.createServer(async (req, res) => {
     }
     // --- END ENDPOINTS QUEST ---
 
-    let filePath = path.join(rootDir, pathname === '/' ? 'index.html' : pathname);
-    if (!filePath.startsWith(rootDir)) {
-        res.writeHead(400);
-        res.end('Bad Request');
-        return;
-    }
+    const safePath = path
+        .normalize(decodeURIComponent(pathname || '/'))
+        .replace(/^(\.\.(\/|\\|$))+/, '')
+        .replace(/^[/\\]+/, '');
 
-    sendFile(res, filePath);
-});
-
-server.listen(port, () => {
-
-    // Buka browser otomatis
-    const url = `http://localhost:${port}`;
-    if (process.env.NO_AUTO_OPEN !== '1') {
-        const command = process.platform === 'win32'
-            ? `start ${url}`
-            : process.platform === 'darwin'
-                ? `open ${url}`
-                : `xdg-open ${url}`;
-
-        exec(command, (error) => {
-            if (error) {
-                console.log(`Browser tidak bisa dibuka otomatis. Buka manual: ${url}`);
+    if (safePath && safePath !== '') {
+        const filePath = path.join(rootDir, safePath);
+        const relativePath = path.relative(rootDir, filePath);
+        
+        if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+            try {
+                await fs.access(filePath);
+                return sendFile(res, filePath);
+            } catch (err) {
+                // File doesn't exist, continue to 404
             }
-        });
-    } else {
-        console.log(`Auto-open browser dimatikan. Buka manual: ${url}`);
+        }
     }
-    console.log(`Server berjalan di http://localhost:${port}`);
+
+    // If no route matched, return 404
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
 });
+
+if (process.env.NODE_ENV !== 'production') {
+    server.listen(port, () => {
+        console.log(`Server running at http://localhost:${port}`);
+    });
+}
+
+module.exports = server;
